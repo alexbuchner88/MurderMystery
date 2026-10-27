@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Derelict Signal — Investigation Terminal Online</title>
+<title>Derelict Signal — Guest Terminal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -124,6 +124,8 @@ textarea{min-height:60px; resize:vertical;}
 .tristate.ts-no{border-color:var(--ok); color:var(--ok);}
 .setup-note{font-size:0.78rem; color:var(--dim); border:1px dashed var(--border); padding:10px; margin-top:10px;}
 .avatar{overflow:hidden;}
+button.avatar{padding:0;cursor:pointer;}
+.board-header .pick-btn{flex:none;}
 .avatar img{width:100%;height:100%;object-fit:cover;display:block;}
 ::-webkit-scrollbar{height:6px; width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--border);}
@@ -133,8 +135,7 @@ textarea{min-height:60px; resize:vertical;}
 <body>
 <div class="topbar">
   <div class="topbar-row">
-    <div class="title">🛰️ DERELICT SIGNAL</div>
-    <div class="phase-chip mono" id="phaseChip">PHASE 1/6</div>
+        <div class="phase-chip mono" id="phaseChip">PHASE 1/6</div><div id="meSlot"></div>
   </div>
   <div class="tabs" id="tabs"></div>
 </div>
@@ -143,56 +144,6 @@ textarea{min-height:60px; resize:vertical;}
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <script>
-/* ============================================================
-   EDIT YOUR SUBJECTS HERE before the party.
-   Fill in each field between the quotation marks.
-   - id: leave as-is (s1, s2, s3...)
-   - name: character's name
-   - role: their job/title on the station (shown under their name)
-   - motiveAccuse: the rumour THIS person spreads accusing someone else
-   - motiveExonerate: the rumour THIS person spreads clearing someone else
-   - weaponConnect: the clue THIS person has connecting someone to the weapon
-   - weaponDisprove: the clue THIS person has disproving a weapon connection
-   - alibiLocation: where THIS person says they were at the time of murder
-   - alibiProof: "none", "object" (physical proof), or "witness" (another subject vouches)
-   - alibiWitness: if alibiProof is "witness", the name of who vouches for them
-   Add or remove whole { ... } blocks to change the guest count (15-20 recommended).
-============================================================ */
-const SUBJECTS = [
-  {id:"s1", name:"Capt. Rhea Solari", role:"Station Commander", motiveAccuse:"Claims Tomas Ilkay argued with the victim over reactor budget cuts.", motiveExonerate:"Insists Naila Bourdin was nowhere near the cargo bay all shift.", weaponConnect:"Found a coolant wrench, station-issue, missing from Engineering's rack.", weaponDisprove:"That wrench was logged out to three crew members, not just one.", alibiLocation:"Bridge, running the evening systems check", alibiProof:"object", alibiWitness:""},
-  {id:"s2", name:"Dr. Emory Vance", role:"Chief Medical Officer", motiveAccuse:"Overheard Corvin Ashworth threaten to \"end this deal one way or another.\"", motiveExonerate:"Confirms Selin Marsh was in the infirmary being treated for a burn.", weaponConnect:"Recognizes tool marks matching a scalpel from the medbay kit.", weaponDisprove:"That scalpel was inventoried and accounted for at shift's end.", alibiLocation:"Medbay, treating a minor injury", alibiProof:"witness", alibiWitness:"Selin Marsh"},
-  {id:"s3", name:"Tomas Ilkay", role:"Engineering Chief", motiveAccuse:"Believes Capt. Rhea Solari wanted the victim gone before the audit.", motiveExonerate:"Says Yuki Tanabe couldn't have left the hangar, the shuttle was mid-repair.", weaponConnect:"Traces a fingerprint smudge on the coolant wrench to cargo-deck gloves.", weaponDisprove:"Those gloves are standard issue, worn by half the crew.", alibiLocation:"Engineering bay, reactor coolant flush", alibiProof:"object", alibiWitness:""},
-  {id:"s4", name:"Naila Bourdin", role:"Cargo Master", motiveAccuse:"Claims Prof. Liang Wu was furious about a mislabeled specimen crate.", motiveExonerate:"Vouches that Ens. Dax Okafor was on patrol, not near cargo.", weaponConnect:"Noticed the coolant wrench missing from a supply manifest two days early.", weaponDisprove:"Manifest errors like that happen weekly, proves nothing.", alibiLocation:"Cargo bay, reconciling manifests", alibiProof:"none", alibiWitness:""},
-  {id:"s5", name:"Ens. Dax Okafor", role:"Security Officer", motiveAccuse:"Reports Dr. Emory Vance falsified a medical requisition.", motiveExonerate:"Confirms Capt. Rhea Solari's bridge logs check out.", weaponConnect:"Footage shows someone matching Tomas Ilkay's build near Engineering.", weaponDisprove:"The footage timestamp doesn't match the estimated time of death.", alibiLocation:"Patrol route, decks B through D", alibiProof:"witness", alibiWitness:"Naila Bourdin"},
-  {id:"s6", name:"Prof. Liang Wu", role:"Xenobiologist", motiveAccuse:"Suspects Yuki Tanabe smuggled something aboard for the victim.", motiveExonerate:"Says Corvin Ashworth was arguing on comms the whole time, not moving.", weaponConnect:"Identifies unusual residue on the wrench matching lab reagents.", weaponDisprove:"That reagent is used station-wide for cleaning, not just in the lab.", alibiLocation:"Xenobiology lab, cataloguing samples", alibiProof:"none", alibiWitness:""},
-  {id:"s7", name:"Corvin Ashworth", role:"Diplomatic Envoy", motiveAccuse:"Claims Naila Bourdin owed the victim a serious debt.", motiveExonerate:"Confirms Prof. Liang Wu never left the lab all evening.", weaponConnect:"Noticed the wrench was gone when he passed Engineering earlier.", weaponDisprove:"He wasn't authorized near Engineering, so his account may be false.", alibiLocation:"Comms room, negotiating with a passing freighter", alibiProof:"object", alibiWitness:""},
-  {id:"s8", name:"Yuki Tanabe", role:"Pilot", motiveAccuse:"Says Ens. Dax Okafor held an old grudge against the victim.", motiveExonerate:"Backs up Dr. Emory Vance's medbay story completely.", weaponConnect:"Saw someone drop something into the recycler near Engineering.", weaponDisprove:"It was too dark to identify who it was.", alibiLocation:"Hangar bay, mid-repair on the shuttle", alibiProof:"witness", alibiWitness:"Tomas Ilkay"},
-  {id:"s9", name:"Selin Marsh", role:"Communications Officer", motiveAccuse:"Believes Capt. Rhea Solari silenced the victim's complaint on purpose.", motiveExonerate:"Confirms Ens. Dax Okafor's patrol logs line up perfectly.", weaponConnect:"Intercepted a private message about \"getting rid of the wrench.\"", weaponDisprove:"That message was sent hours after the murder, too late to matter.", alibiLocation:"Infirmary, treated for a minor burn", alibiProof:"witness", alibiWitness:"Dr. Emory Vance"},
-];
-
-/* PLACEHOLDER abilities per subject: [name, kind]. Replace with the real ones later. */
-const ABILITIES = {
-  s1:[["Mind Alteration","supernatural"],["Tactical Command","natural"]],
-  s2:[["Empathic Sensing","supernatural"],["Field Medicine","natural"]],
-  s3:[["Engineering","natural"],["Telekinesis","supernatural"]],
-  s4:[["Hacking","natural"],["Precognition","supernatural"]],
-  s5:[["Combat Reflexes","natural"],["Mind Alteration","supernatural"]],
-  s6:[["Xenolinguistics","natural"],["Telepathy","supernatural"]],
-  s7:[["Persuasion","natural"],["Mind Alteration","supernatural"]],
-  s8:[["Piloting","natural"],["Phasing","supernatural"]],
-  s9:[["Hacking","natural"],["Telepathy","supernatural"]]
-};
-
-const PHASE_INFO = [
-  {title:"ARRIVAL", banner:"Welcome aboard the derelict station. Review the dossier below — these are everyone present tonight."},
-  {title:"THE MURDER", banner:"A body has been found. Two rumours are now circulating from each subject: one accusing, one exonerating. Trade them with the room."},
-  {title:"THE WEAPON", banner:"The murder weapon has been identified. Each subject holds a clue — one connecting a person to the weapon, one disproving a connection."},
-  {title:"TIME & PLACE", banner:"The time and place of the murder are confirmed. Check alibis — some are proven, some rest only on another subject's word."},
-  {title:"THE ACCOMPLICE", banner:"No single subject has motive, weapon connection, and alibi gap together. Find the PAIR who between them satisfy all three."},
-  {title:"THE VERDICT", banner:"Cast your votes. Choose up to two suspects to accuse, or mark subjects as certainly innocent."},
-];
-
-/* FIREBASE CONFIG: Firestore must be created in your Firebase project. */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBXngpFJJQaQ31XvyVZQ1gvXYbsoXnVJ58",
   authDomain: "example-app-6ecf5.firebaseapp.com",
@@ -201,346 +152,221 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "499648887891",
   appId: "1:499648887891:web:1c75271271df39f5b81aa6"
 };
-
-const TABS = ["Dossier","My Profile","Investigation Board","Verdict"];
+const PHASE_INFO = [
+  {title:"ARRIVAL", banner:"Welcome to Alpha Centauri. Check the guest list to see who is here tonight."},
+  {title:"THE MURDER", banner:"A body has been found. Two rumours are now circulating from each guest: one accusing, one exonerating. Trade them with the room."},
+  {title:"THE WEAPON", banner:"The murder weapon has been identified. Each guest holds a clue: one connecting a person to the weapon, one disproving a connection."},
+  {title:"TIME & PLACE", banner:"The time and place of the murder are confirmed. Check alibis. Some are proven, some rest only on another guest's word."},
+  {title:"THE ACCOMPLICE", banner:"No single guest has motive, ability and opportunity together. Find the PAIR who between them have all three."},
+  {title:"THE VERDICT", banner:"Cast your votes. Choose up to two suspects to accuse, or mark guests as certainly innocent."}
+];
+const SECRETS = [
+  {min:2, label:"YOUR RUMOURS", f:[["accuse","Accusing"],["exonerate","Exonerating"]]},
+  {min:3, label:"YOUR WEAPON CLUES", f:[["weaponConnect","Connects someone"],["weaponDisprove","Disproves a connection"]]},
+  {min:4, label:"YOUR ALIBI", f:[["alibi","Alibi"]]}
+];
 const store = {
   get(k,d){ try{const v=localStorage.getItem('mm_'+k); return v?JSON.parse(v):d;}catch(e){return d;} },
   set(k,v){ try{localStorage.setItem('mm_'+k, JSON.stringify(v));}catch(e){} }
 };
+const state = { tab:store.get('tab3',0), hide:store.get('hide3',false), hideInfo:store.get('hideinfo3',false), open:store.get('open2',{}), trk:store.get('trk2',{}), rd:store.get('rd2',{}), pn:store.get('pn2',{}) };
+function save(){ store.set('tab3',state.tab); store.set('hide3',state.hide); store.set('hideinfo3',state.hideInfo); store.set('open2',state.open); store.set('trk2',state.trk); store.set('rd2',state.rd); store.set('pn2',state.pn); }
 
-let state = {
-  phase: store.get('phase', 1),
-  myId: store.get('myId', null),
-  tab: store.get('tab', 0),
-  track: store.get('track', {}),      // {subjectId: {motive:'unknown'|'yes'|'no', weapon:..., alibi:..., connectTo:""}}
-  notes: store.get('notes', {}),      // {subjectId: "text"}
-  votes: store.get('votes', {}),
-  read: store.get('read', {}),
-  me: store.get('me', {realName:'', photo:''}),      // {subjectId: "suspect"|"innocent"}
-  collapse: store.get('collapse', {}) // {subjectId: bool} true = collapsed
-};
+let db=null, myUid=null, peers={}, loaded=false, dirty=false, editing=false;
+const $ = s=>document.querySelector(s);
+const esc = t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const nl = t=>esc(t).replace(/\n/g,'<br>');
+const norm = t=>String(t||'').trim().toLowerCase();
+const okImg = p=>typeof p==='string'&&p.startsWith('data:image/jpeg;base64,')&&p.length<60000;
+const initials = n=>String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+const av = p=>okImg(p.photo)?`<img src="${p.photo}" alt="">`:esc(initials(p.name));
+const P = ()=>Object.keys(peers).filter(k=>k[0]!=='_').map(k=>Object.assign({id:k},peers[k])).sort((a,b)=>(a.created||0)-(b.created||0));
+const mine = ()=>P().find(p=>p.owner&&p.owner===myUid);
+const phase = ()=>(peers._game&&peers._game.phase)||1;
+const isAdmin = m=>norm(m.title)==='admin'||m.admin===true;
+const isSO = m=>isAdmin(m)||norm(m.title)==='security officer';
+const newId = ()=>'p'+Math.random().toString(36).slice(2,9)+Date.now().toString(36);
 
-function save(){
-  store.set('phase', state.phase);
-  store.set('myId', state.myId);
-  store.set('tab', state.tab);
-  store.set('track', state.track);
-  store.set('notes', state.notes);
-  store.set('votes', state.votes);
-  store.set('read', state.read);
-  store.set('me', state.me);
-  store.set('collapse', state.collapse);
+function upd(id,patch){
+  const cur = peers[id] = peers[id]||{};
+  Object.keys(patch).forEach(k=>{ const v=patch[k]; cur[k] = (v&&typeof v==='object') ? Object.assign({},cur[k],v) : v; });
+  if(db) db.doc('players/'+id).set(patch,{merge:true}).catch(()=>{});
 }
-function getTrack(id){ return state.track[id] || {motive:'unknown', weapon:'unknown', alibi:'unknown', connectTo:""}; }
-function setTrack(id, patch){ state.track[id] = Object.assign(getTrack(id), patch); save(); }
-function initials(name){ return name.trim().split(/\s+/).slice(0,2).map(w=>w[0]||"").join("").toUpperCase(); }
-function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-let db=null, myUid=null, peers={}, pushT=null, dirty=false, armed=false;
-const okImg=p=>typeof p==='string'&&p.startsWith('data:image/jpeg;base64,')&&p.length<60000;
-function claimants(sid){ const out=[]; if(state.myId===sid) out.push(state.me); Object.keys(peers).forEach(id=>{ const p=peers[id]; if(id!==myUid&&p&&p.subjectId===sid) out.push(p); }); return out; }
-function avatarInner(sid,name){ const c=claimants(sid).find(p=>okImg(p.photo)); return c?`<img src="${c.photo}" alt="">`:esc(initials(name)); }
-function playedBy(sid){ return claimants(sid).map(p=>esc(p.realName)).filter(Boolean).join(', '); }
-function pushMe(){ if(!db||!myUid) return; clearTimeout(pushT); pushT=setTimeout(()=>{ db.doc('players/'+myUid).set({subjectId:state.myId||'',realName:state.me.realName||'',photo:state.me.photo||'',votes:state.votes}).catch(()=>{}); },400); }
-function playerCount(){ return Object.keys(peers).filter(id=>peers[id]&&peers[id].subjectId).length; }
-function tallyText(sid){ if(!db) return ''; let a=0; Object.keys(peers).forEach(id=>{ if(id!==myUid&&peers[id].votes&&peers[id].votes[sid]==='suspect') a++; }); if(state.votes[sid]==='suspect') a++; return ` · ${a} accuse`; }
+function blank(extra){ return Object.assign({owner:'',name:'',realName:'',title:'',system:'',abilities:'',photo:'',notes:'',secrets:{},votes:{},created:Date.now()},extra); }
+function setPhase(n){ if(n<1||n>6) return; upd('_game',{phase:n}); render(); window.scrollTo(0,0); }
 function shrink(file){ return new Promise((ok,no)=>{ const r=new FileReader(); r.onerror=no; r.onload=()=>{ const im=new Image(); im.onerror=no; im.onload=()=>{ const n=128,c=document.createElement('canvas'); c.width=c.height=n; const s=Math.min(im.width,im.height); c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,n,n); ok(c.toDataURL('image/jpeg',0.75)); }; im.src=r.result; }; r.readAsDataURL(file); }); }
-function nextTri(v){ return v==='unknown' ? 'yes' : v==='yes' ? 'no' : 'unknown'; }
-function triSymbol(v){ return v==='yes' ? '✓' : v==='no' ? '✕' : '–'; }
-function triClass(v){ return v==='yes' ? 'ts-yes' : v==='no' ? 'ts-no' : ''; }
+const trk = id=>Object.assign({motive:'unknown',ability:'unknown',opportunity:'unknown',shared:''},state.trk[id]);
+const nextTri = v=>v==='unknown'?'yes':v==='yes'?'no':'unknown';
+const triSym = v=>v==='yes'?'✓':v==='no'?'✕':'–';
+const triCls = v=>v==='yes'?'ts-yes':v==='no'?'ts-no':'';
 
-function unlockedTabs(){
-  // Dossier always; Profile once chosen self; Board from phase 2; Verdict from phase 6
-  const u = [true, !!state.myId, state.phase>=2, state.phase>=6];
-  return u;
+function renderTop(me){
+  $('#phaseChip').textContent = `PHASE ${phase()}/6 — ${PHASE_INFO[phase()-1].title}`;
+  $('#meSlot').innerHTML = me?`<button class="avatar" id="meBtn" title="My profile" style="width:36px;height:36px;min-width:36px;font-size:.8rem;${state.tab===3?'border-color:var(--amber);':''}">${av(me)}</button>`:'';
+  const tabs = me?['Guests','Accusation','Verdict']:[];
+  $('#tabs').innerHTML = tabs.map((t,i)=>`<button class="tab ${state.tab===i?'active':''}" data-tab="${i}" ${i>=1&&phase()<6?'disabled style="opacity:.3;cursor:not-allowed"':''}>${t}</button>`).join('');
 }
-
-function renderTopbar(){
-  document.getElementById('phaseChip').textContent = `PHASE ${state.phase}/6 — ${PHASE_INFO[state.phase-1].title}`;
-  const u = unlockedTabs();
-  const tabsEl = document.getElementById('tabs');
-  tabsEl.innerHTML = TABS.map((t,i)=>
-    `<button class="tab ${state.tab===i?'active':''}" ${u[i]?'':'disabled style="opacity:.3;cursor:not-allowed"'} data-tab="${i}">${t}</button>`
-  ).join('');
-  tabsEl.querySelectorAll('.tab').forEach(b=>{
-    b.addEventListener('click', ()=>{ state.tab = parseInt(b.dataset.tab); save(); render(); });
-  });
-}
-
 function phaseButtons(){
-  const atStart = state.phase<=1;
-  const atEnd = state.phase>=6;
-  return `<div style="display:flex; gap:10px; margin-top:6px;">
-    <button class="btn secondary" id="prevPhaseBtn" ${atStart?'disabled':''}>← Back</button>
-    <button class="btn" id="nextPhaseBtn" ${atEnd?'disabled':''}>${atEnd?'Investigation Closed':'Next Phase →'}</button>
-  </div>`;
+  const n=phase();
+  return `<div style="display:flex;gap:10px;margin-top:14px;"><button class="btn secondary" data-a="prev" ${n<=1?'disabled':''}>← Back</button><button class="btn" data-a="next" ${n>=6?'disabled':''}>${n>=6?'Investigation Closed':'Next Phase →'}</button></div>`;
 }
-
-function renderDossier(){
-  return `
-    <div class="banner reveal">${PHASE_INFO[state.phase-1].banner}</div>
-    <div class="panel">
-      <div class="eyebrow">GUEST LIST</div>
-      <h3>All Subjects Aboard</h3>
-      <div class="setup-note">${state.myId?'You are signed up. To switch character, use Change Profile in My Profile.':'Tap your character to sign up. You can only do this once.'}</div>
-    </div>
-    ${SUBJECTS.map(s=>`
-      <div class="subject-card" ${!state.myId&&!claimants(s.id).length?`data-pick="${s.id}" style="cursor:pointer;"`:''}>
-        <div class="avatar">${avatarInner(s.id,s.name)}</div>
-        <div class="subject-body">
-          <div class="subject-name">${s.name}${state.myId===s.id?' <span class="mono" style="color:var(--amber);font-size:.7rem;">(YOU)</span>':''}${!state.myId&&claimants(s.id).length?' <span class="mono" style="color:var(--dim);font-size:.7rem;">(taken)</span>':''}</div>${playedBy(s.id)?`<div class="mono" style="font-size:.72rem;color:var(--blue);margin-bottom:2px;">${playedBy(s.id)}</div>`:''}
-          <div class="subject-role">${s.role}</div>
-        </div>
-      </div>
-    `).join('')}
-    ${phaseButtons()}
-  `;
+function signup(){
+  const free = P().filter(p=>!p.owner);
+  return `<div class="panel"><div class="eyebrow">SIGN UP</div><h3>Dear Passengers! Prepare for your arrival on Alpha Centauri and register your person.</h3>
+    <label class="row-label">Character name</label><input type="text" id="su_name" maxlength="40">
+    <label class="row-label">Your real name</label><input type="text" id="su_real" maxlength="40">
+    <button class="btn" data-a="signup" style="margin-top:12px;">Register</button></div>
+    ${free.length?`<div class="panel"><div class="eyebrow">OR CLAIM A PROFILE THE HOST CREATED</div>${free.map(p=>`<div class="pick-row" style="margin-bottom:8px;"><div><div class="subject-name">${esc(p.name)}</div><div class="subject-role" style="margin:0;">${esc(p.title)}</div></div><button class="pick-btn" data-a="claim" data-id="${p.id}">This is me</button></div>`).join('')}</div>`:''}`;
 }
-
-function renderProfile(){
-  if(!state.myId){
-    return `<div class="panel"><div class="eyebrow">SETUP</div><h3>Who are you?</h3>
-      <div class="setup-note">Open the Dossier tab and tap your character's name to begin.</div></div>`;
-  }
-  const me = SUBJECTS.find(s=>s.id===state.myId);
-  let html = `<div class="panel">
-    <div class="eyebrow">YOUR IDENTITY</div>
-    <h3>${me.name}</h3>
-    <div class="subject-role">${me.role}</div>
-    <button class="btn ${armed?'danger':'secondary'}" id="changeIdBtn" style="margin-top:8px;">${armed?'Tap again to release this character':'Change Profile'}</button>
-  </div>`;
-
-  html += `<div class="panel">
-    <div class="eyebrow">PLAYER</div>
-    <div style="display:flex;gap:12px;align-items:center;">
-      <div class="avatar" style="width:64px;height:64px;min-width:64px;">${avatarInner(me.id,me.name)}</div>
-      <div style="flex:1;min-width:0;">
-        <label class="row-label" style="margin-top:0;">Your real name</label>
-        <input type="text" id="realName" maxlength="40" value="${esc(state.me.realName)}" placeholder="So the others know who you are">
-      </div>
-    </div>
-    <input type="file" id="photoIn" accept="image/*" style="display:none">
-    <button class="btn secondary" id="photoBtn" style="margin-top:10px;">${state.me.photo?'Change photo':'Upload photo'}</button>
-    <div class="setup-note">${db?'Synced with the other players.':'Offline mode. Name and photo stay on this device.'}</div>
-  </div>
-  <div class="panel">
-    <div class="eyebrow">YOUR ABILITIES</div>
-    ${(ABILITIES[me.id]||[]).map(a=>`<p><b>${esc(a[0])}</b> <span class="mono" style="color:var(--dim);font-size:.72rem;">${esc(a[1])}</span></p>`).join('')||'<p class="setup-note">None assigned.</p>'}
-  </div>`;
-  if(state.phase>=2){
-    html += `<div class="panel reveal">
-      <div class="eyebrow">YOUR RUMOURS</div>
-      <p><b>Accusing:</b> ${me.motiveAccuse||'<span class="setup-note" style="display:inline">not filled in yet</span>'}</p>
-      <p><b>Exonerating:</b> ${me.motiveExonerate||'<span class="setup-note" style="display:inline">not filled in yet</span>'}</p>
-    </div>`;
-  }
-  if(state.phase>=3){
-    html += `<div class="panel reveal">
-      <div class="eyebrow">YOUR WEAPON CLUES</div>
-      <p><b>Connects someone:</b> ${me.weaponConnect||'—'}</p>
-      <p><b>Disproves a connection:</b> ${me.weaponDisprove||'—'}</p>
-    </div>`;
-  }
-  if(state.phase>=4){
-    const proofLabel = me.alibiProof==='object' ? 'Physical proof' : me.alibiProof==='witness' ? `Vouched for by ${me.alibiWitness||'(unset)'}` : 'No proof';
-    html += `<div class="panel reveal">
-      <div class="eyebrow">YOUR ALIBI</div>
-      <p><b>Location:</b> ${me.alibiLocation||'—'}</p>
-      <p><b>Proof:</b> ${proofLabel}</p>
-    </div>`;
-  }
-  return html;
-}
-
-function renderBoard(){
-  const others = SUBJECTS;
-  return `
-    <div class="banner reveal">${PHASE_INFO[state.phase-1].banner}</div>
-    <div class="pick-grid">
-    ${others.map(s=>{
-      const t = getTrack(s.id);
-      const v = state.read[s.id]||'';
-      const notesOpen = state.notes['_open_'+s.id];
-      const collapsed = !!state.collapse[s.id];
-      const avatarCls = v==='suspect' ? 'avatar-suspect' : v==='innocent' ? 'avatar-innocent' : '';
-      const badge = v==='suspect' ? `<span class="badge badge-suspect">!</span>` : v==='innocent' ? `<span class="badge badge-innocent">✓</span>` : '';
-      return `
-      <div class="board-card">
-        <div class="board-header" data-collapse-toggle="${s.id}">
-          <div class="avatar-wrap">
-            <div class="avatar ${avatarCls}">${avatarInner(s.id,s.name)}</div>
-            ${badge}
-          </div>
-          <div class="subject-body">
-            <div class="subject-name">${s.name}</div>
-            ${collapsed?'':`<div class="subject-role">${s.role}</div>`}
-          </div>
-          <span class="chevron">${collapsed?'▸':'▾'}</span>
-        </div>
-        ${collapsed?'':`
-        <div class="board-body">
-          <div class="flags tight">
-            <button class="tristate ${triClass(t.motive)}" data-tristate="${s.id}" data-field="motive">Motive ${triSymbol(t.motive)}</button>
-            ${state.phase>=3?`<button class="tristate ${triClass(t.weapon)}" data-tristate="${s.id}" data-field="weapon">Weapon ${triSymbol(t.weapon)}</button>`:''}
-            ${state.phase>=4?`<button class="tristate ${triClass(t.alibi)}" data-tristate="${s.id}" data-field="alibi">Alibi ${triSymbol(t.alibi)}</button>`:''}
-          </div>
-          ${state.phase>=5?`
-            <label class="row-label">Connected to (shared alibi / accomplice)</label>
-            <select data-connect="${s.id}">
-              <option value="">— none —</option>
-              ${others.filter(o=>o.id!==s.id).map(o=>`<option value="${o.id}" ${t.connectTo===o.id?'selected':''}>${o.name}</option>`).join('')}
-            </select>
-          `:''}
-          <label class="row-label">Your read on this subject</label>
-          <div class="pick-actions" style="margin-top:4px;">
-            <button class="pick-btn ${v==='suspect'?'on-suspect':''}" data-vote="${s.id}" data-val="suspect">Suspicious</button>
-            <button class="pick-btn ${v==='innocent'?'on-innocent':''}" data-vote="${s.id}" data-val="innocent">Innocent</button>
-          </div>
-          <button class="notes-toggle" data-notes-toggle="${s.id}">${notesOpen?'Hide notes':'Notes'}</button>
-          ${notesOpen?`<textarea data-notes="${s.id}" placeholder="Your notes on ${s.name}...">${state.notes[s.id]||''}</textarea>`:''}
-        </div>`}
-      </div>`;
-    }).join('')}
-    </div>
-    ${phaseButtons()}
-  `;
-}
-
-function renderVerdict(){
-  const suspects = SUBJECTS.filter(s=>state.votes[s.id]==='suspect');
-  return `
-    <div class="banner reveal">${PHASE_INFO[5].banner}</div>
-    <div class="panel">
-      <div class="eyebrow mono">${suspects.length}/2 SELECTED AS SUSPECT</div>
-      <div class="setup-note">${db?`${playerCount()} players synced. Votes update live.`:'Offline mode. Only your own votes are counted.'}</div>
-      ${suspects.length>2?'<p style="color:var(--danger);font-size:.85rem;">You can only accuse two. Remove one.</p>':''}
-    </div>
-    <div class="pick-grid">
-    ${SUBJECTS.map(s=>{
-      const v = state.votes[s.id]||'';
-      return `<div class="pick-row">
-        <div>
-          <div class="subject-name" style="font-size:.9rem;">${s.name}</div>
-          <div class="subject-role" style="font-size:.72rem;">${s.role}${tallyText(s.id)}</div>
-        </div>
-        <div class="pick-actions">
-          <button class="pick-btn ${v==='suspect'?'on-suspect':''}" data-vote="${s.id}" data-val="suspect">Suspect</button>
-          <button class="pick-btn ${v==='innocent'?'on-innocent':''}" data-vote="${s.id}" data-val="innocent">Innocent</button>
-        </div>
-      </div>`;
-    }).join('')}
-    </div>
-  `;
-}
-
-function render(){
-  renderTopbar();
-  const app = document.getElementById('app');
-  const u = unlockedTabs();
-  let tab = state.tab;
-  if(!u[tab]) tab = 0;
-  if(tab===0) app.innerHTML = renderDossier();
-  else if(tab===1) app.innerHTML = renderProfile();
-  else if(tab===2) app.innerHTML = renderBoard();
-  else app.innerHTML = renderVerdict();
-  bindEvents(tab);
-}
-
-function bindEvents(tab){
-  const nextBtn = document.getElementById('nextPhaseBtn');
-  if(nextBtn) nextBtn.addEventListener('click', ()=>{
-    if(state.phase<6){ state.phase++; save(); render(); window.scrollTo(0,0); }
-  });
-  const prevBtn = document.getElementById('prevPhaseBtn');
-  if(prevBtn) prevBtn.addEventListener('click', ()=>{
-    if(state.phase>1){ state.phase--; save(); render(); window.scrollTo(0,0); }
-  });
-  document.querySelectorAll('[data-vote]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      const id = el.dataset.vote, val = el.dataset.val;
-      const bag = tab===2 ? state.read : state.votes; bag[id] = bag[id]===val ? '' : val; if(tab!==2) pushMe();
-      save(); render();
-    });
-  });
-  if(tab===0){
-    document.querySelectorAll('[data-pick]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        if(state.myId||claimants(el.dataset.pick).length) return; state.myId = el.dataset.pick; state.tab = 1; save(); pushMe(); render();
-      });
-    });
-  }
-  if(tab===1){
-    const rn = document.getElementById('realName');
-    if(rn) rn.addEventListener('change', ()=>{ state.me.realName = rn.value.trim(); save(); pushMe(); });
-    const pb = document.getElementById('photoBtn'), pi = document.getElementById('photoIn');
-    if(pb && pi){
-      pb.addEventListener('click', ()=>pi.click());
-      pi.addEventListener('change', ()=>{ const f = pi.files[0]; if(f) shrink(f).then(d=>{ state.me.photo = d; save(); pushMe(); render(); }).catch(()=>{}); });
-    }
-    const ch = document.getElementById('changeIdBtn');
-    if(ch) ch.addEventListener('click', ()=>{
-      if(!armed){
-        armed = true; render();
-        setTimeout(()=>{ if(armed){ armed = false; if(!/INPUT/.test(document.activeElement.tagName)) render(); } }, 4000);
-        return;
+function guests(me){
+  const ps=P().sort((a,b)=>(b.id===me.id)-(a.id===me.id)), ph=phase(), admin=isAdmin(me);
+  return `<div class="banner reveal">${PHASE_INFO[ph-1].banner}</div>
+  ${state.hide?'':`<div class="panel"><div style="display:flex;justify-content:space-between;gap:10px;"><div><div class="eyebrow">GUEST LIST</div><h3>${ps.length} guests aboard</h3></div><button class="pick-btn" data-a="hideintro" title="Hide">✕</button></div><div class="subject-role" style="margin:0;">Tap a guest to open their profile or tap yourself to see your own.</div></div>`}
+  ${ps.map(p=>{
+    const open=state.open[p.id], self=p.id===me.id, t=trk(p.id), v=state.rd[p.id]||'', s=p.secrets||{};
+    const sub=[p.title,p.realName].filter(Boolean).map(esc).join(' · ');
+    let body='';
+    if(open){
+      body=`<div class="board-body">
+        ${p.system?`<label class="row-label">System</label><div>${esc(p.system)}</div>`:''}
+        ${p.abilities?`<label class="row-label">Abilities</label><div>${nl(p.abilities)}</div>`:''}
+        ${!p.system&&!p.abilities?'<div class="subject-role">No public details yet.</div>':''}`;
+      if(!self&&ph>=2){
+        body+=`<label class="row-label" style="margin-top:14px;">Your case file on this guest (private)</label>
+        <div class="flags tight">${[['motive','Motive'],['ability','Ability'],['opportunity','Opportunity']].map(([f,l])=>`<button class="tristate ${triCls(t[f])}" data-a="tri" data-id="${p.id}" data-f="${f}">${l} ${triSym(t[f])}</button>`).join('')}</div>`;
+        if(ph>=5) body+=`<label class="row-label">Shared alibi with</label><select data-i="shared" data-id="${p.id}"><option value="">None</option>${ps.filter(o=>o.id!==p.id).map(o=>`<option value="${o.id}" ${t.shared===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
+        body+=`<label class="row-label">Your read</label><div class="pick-actions"><button class="pick-btn ${v==='suspect'?'on-suspect':''}" data-a="gread" data-id="${p.id}" data-val="suspect">Suspicious</button><button class="pick-btn ${v==='innocent'?'on-innocent':''}" data-a="gread" data-id="${p.id}" data-val="innocent">Innocent</button></div>
+        <label class="row-label">Your notes</label><textarea data-i="pnote" data-id="${p.id}" placeholder="Notes on ${esc(p.name)}...">${esc(state.pn[p.id]||'')}</textarea>`;
       }
-      armed = false; state.myId = null; state.tab = 0; save(); pushMe(); render();
-    });
-  }
-  if(tab===2){
-    document.querySelectorAll('[data-collapse-toggle]').forEach(el=>{
-      el.addEventListener('click', ()=>{
-        const id = el.dataset.collapseToggle;
-        state.collapse[id] = !state.collapse[id];
-        save(); render();
-      });
-    });
-    document.querySelectorAll('[data-tristate]').forEach(el=>{
-      el.addEventListener('click', (ev)=>{
-        ev.stopPropagation();
-        const id = el.dataset.tristate, field = el.dataset.field;
-        setTrack(id, {[field]: nextTri(getTrack(id)[field])});
-        render();
-      });
-    });
-    document.querySelectorAll('[data-connect]').forEach(el=>{
-      el.addEventListener('click', ev=>ev.stopPropagation());
-      el.addEventListener('change', ()=>{
-        setTrack(el.dataset.connect, {connectTo: el.value});
-      });
-    });
-    document.querySelectorAll('[data-notes-toggle]').forEach(el=>{
-      el.addEventListener('click', (ev)=>{
-        ev.stopPropagation();
-        const id = el.dataset.notesToggle;
-        state.notes['_open_'+id] = !state.notes['_open_'+id];
-        save(); render();
-      });
-    });
-    document.querySelectorAll('[data-notes]').forEach(el=>{
-      el.addEventListener('click', ev=>ev.stopPropagation());
-      el.addEventListener('input', ()=>{
-        state.notes[el.dataset.notes] = el.value; save();
-      });
-    });
-  }
+      if(admin){
+        body+=`<div class="setup-note"><div class="eyebrow">ADMIN</div>${SECRETS.map(g=>g.f.map(([k,l])=>`<label class="row-label">${l}</label><textarea data-i="secret" data-k="${p.id}|${k}">${esc(s[k]||'')}</textarea>`).join('')).join('')}
+        <label class="row-label">Personal notes</label><textarea data-i="anote" data-id="${p.id}">${esc(p.notes||'')}</textarea></div>`;
+      }
+      body+='</div>';
+    }
+    return `<div class="board-card"><div class="board-header" data-a="open" data-id="${p.id}">
+      <div class="avatar-wrap"><div class="avatar ${v==='suspect'?'avatar-suspect':v==='innocent'?'avatar-innocent':''}">${av(p)}</div></div>
+      <div style="flex:1;min-width:0;"><div class="subject-name">${esc(p.name||'Unnamed')}${self?' <span class="mono" style="color:var(--amber);font-size:.7rem;">(YOU)</span>':''}${admin&&!p.owner?' <span class="mono" style="color:var(--dim);font-size:.7rem;">(unclaimed)</span>':''}</div><div class="subject-role">${sub||'&nbsp;'}</div></div>
+      ${admin&&!self?`<button class="pick-btn" data-a="take" data-id="${p.id}" title="Take over this guest" style="margin-right:6px;">✓</button><button class="pick-btn" data-a="kick" data-id="${p.id}" title="${p.owner?'Remove access':'Delete'}">✕</button>`:''}
+      <span class="chevron">${self?'›':open?'▲':'▼'}</span></div>${body}</div>`;
+  }).join('')}
+  ${admin?'<button class="btn secondary" data-a="new">+ New player</button>':''}
+  ${isSO(me)?phaseButtons():''}`;
+}
+function profile(me){
+  const ph=phase(), s=me.secrets||{};
+  const ed=editing;
+  const fld=(id,l,v,ta)=>`<label class="row-label">${l}</label>${ta?`<textarea id="${id}">${esc(v)}</textarea>`:`<input type="text" id="${id}" maxlength="60" value="${esc(v)}">`}`;
+  let h=`${state.hideInfo?'':`<div class="banner" style="display:flex;justify-content:space-between;gap:10px;"><span>Please fill out the immigration form and upload a biometric image.</span><button class="pick-btn" data-a="hideinfo" title="Hide">✕</button></div>`}<div class="panel"><div style="display:flex;gap:14px;align-items:center;">
+    <div class="avatar" data-a="photo" style="width:84px;height:84px;min-width:84px;font-size:1.4rem;cursor:pointer;" title="Tap to change photo">${av(me)}</div>
+    <div style="flex:1;min-width:0;">${ed?'':`<h3 style="color:var(--text);">${esc(me.name)}</h3><div class="subject-role" style="margin:0;">${[me.title,me.realName].filter(Boolean).map(esc).join(' · ')}</div>`}<div class="mono" style="font-size:.68rem;color:var(--dim);margin-top:4px;">Tap the picture to upload a photo</div></div>
+    ${ed?'':'<button class="btn secondary" data-a="edit">Edit</button>'}</div>
+    <input type="file" id="photoIn" accept="image/*" style="display:none">
+    ${ed?`${fld('f_name','Character name',me.name)}${fld('f_real','Real name',me.realName)}${fld('f_title','Character title',me.title)}${fld('f_sys','System (home planet or system)',me.system)}${fld('f_abil','Abilities',me.abilities,1)}
+    <div style="display:flex;gap:10px;margin-top:12px;"><button class="btn" data-a="save">Save</button><button class="btn secondary" data-a="cancel">Cancel</button></div>`
+    :`${me.system?`<label class="row-label">System</label><div>${esc(me.system)}</div>`:''}${me.abilities?`<label class="row-label">Abilities</label><div>${nl(me.abilities)}</div>`:''}`}
+  </div>`;
+  SECRETS.forEach(g=>{ if(ph>=g.min) h+=`<div class="panel reveal"><div class="eyebrow">${g.label}</div>${g.f.map(([k,l])=>`<p><b>${l}:</b> ${s[k]?nl(s[k]):'<span class="subject-role">not filled in yet</span>'}</p>`).join('')}</div>`; });
+  h+=`<div class="panel"><div class="eyebrow">PERSONAL NOTES</div><div class="subject-role">Hidden from other guests. The admin can read them.</div><textarea data-i="notes" style="min-height:120px;">${esc(me.notes||'')}</textarea></div>`;
+  return h;
+}
+function verdict(me){
+  const ps=P(), mv=me.votes||{}, sus=ps.filter(p=>mv[p.id]==='suspect').length;
+    return `<div class="banner reveal">${PHASE_INFO[5].banner}</div>
+  <div class="panel"><div class="eyebrow mono">${sus}/2 SELECTED AS SUSPECT</div><div class="setup-note">${ps.filter(p=>p.votes&&Object.values(p.votes).some(Boolean)).length} of ${ps.length} guests have voted.</div>${sus>2?'<p style="color:var(--danger);font-size:.85rem;">You can only accuse two. Remove one.</p>':''}</div>
+  <div class="pick-grid">${ps.map(p=>`<div class="pick-row"><div><div class="subject-name" style="font-size:.9rem;">${esc(p.name)}</div><div class="subject-role" style="font-size:.72rem;margin:0;">${esc(p.title)}</div></div>
+    <div class="pick-actions"><button class="pick-btn ${mv[p.id]==='suspect'?'on-suspect':''}" data-a="vote" data-id="${p.id}" data-val="suspect">Suspect</button><button class="pick-btn ${mv[p.id]==='innocent'?'on-innocent':''}" data-a="vote" data-id="${p.id}" data-val="innocent">Innocent</button></div></div>`).join('')}</div>`;
+}
+function results(){
+  const ps=P(), cnt=(id,v)=>ps.filter(q=>q.votes&&q.votes[id]===v).length;
+  const rows=ps.map(p=>({p,a:cnt(p.id,'suspect'),c:cnt(p.id,'innocent')})).sort((x,y)=>y.a-x.a||y.c-x.c||String(x.p.name).localeCompare(String(y.p.name)));
+  const max=Math.max(1,...rows.map(r=>r.a));
+  return `<div class="banner reveal">Final votes, sorted by accusations. Results update live.</div>
+  <div class="pick-grid">${rows.map((r,i)=>`<div class="pick-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;"><div style="display:flex;gap:10px;align-items:center;"><div class="avatar" style="width:34px;height:34px;min-width:34px;font-size:.8rem;">${av(r.p)}</div><div><div class="subject-name" style="margin:0;">${i+1}. ${esc(r.p.name)}</div><div class="subject-role" style="margin:0;font-size:.72rem;">${esc(r.p.title)}</div></div></div><div class="mono" style="color:var(--danger);font-size:1.1rem;">${r.a}</div></div>
+    <div style="height:4px;background:var(--panel);"><div style="height:100%;width:${r.a/max*100}%;background:var(--danger);"></div></div>
+    <div class="subject-role" style="margin:0;font-size:.72rem;">${r.a} accuse · ${r.c} cleared</div></div>`).join('')}</div>`;
+}
+function render(){
+  const app=$('#app');
+  if(!loaded){ renderTop(null); app.innerHTML='<div class="panel"><div class="eyebrow">CONNECTING</div><p>Loading station records...</p></div>'; return; }
+  const me=mine();
+  renderTop(me);
+  if(!me){ app.innerHTML=signup(); return; }
+  let t=state.tab; if((t===1||t===2)&&phase()<6) t=0;
+  app.innerHTML = t===3?profile(me):t===2?results():t===1?verdict(me):guests(me);
 }
 
-render();
+const tm={};
+function commit(t){
+  const d=t.dataset, me=mine(); if(!me) return;
+  if(d.i==='notes') upd(me.id,{notes:t.value});
+  else if(d.i==='anote') upd(d.id,{notes:t.value});
+  else if(d.i==='secret'){ const [id,k]=d.k.split('|'); upd(id,{secrets:{[k]:t.value}}); }
+  else if(d.i==='pnote'){ state.pn[d.id]=t.value; save(); }
+  else if(d.i==='shared'){ state.trk[d.id]=Object.assign(trk(d.id),{shared:t.value}); save(); }
+}
+const app=$('#app');
+app.addEventListener('input',e=>{ const t=e.target; if(!t.dataset.i) return; const k=t.dataset.i+(t.dataset.k||t.dataset.id||''); clearTimeout(tm[k]); tm[k]=setTimeout(()=>commit(t),600); });
+app.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.dataset.i){ commit(t); return; }
+  if(t.id==='photoIn'&&t.files[0]){ const me=mine(); shrink(t.files[0]).then(d=>{ upd(me.id,{photo:d}); render(); }).catch(()=>{}); }
+});
+app.addEventListener('click',e=>{
+  const t=e.target.closest('[data-a]'); if(!t) return;
+  const d=t.dataset, me=mine();
+  switch(d.a){
+    case 'signup': { const n=$('#su_name').value.trim(); if(!n){ $('#su_name').focus(); return; } upd(newId(),blank({owner:myUid,name:n,realName:$('#su_real').value.trim()})); state.tab=3; editing=true; save(); break; }
+    case 'claim': if(peers[d.id]&&!peers[d.id].owner) upd(d.id,{owner:myUid}); break;
+    case 'open': if(d.id===me.id){ state.tab=3; editing=false; } else state.open[d.id]=!state.open[d.id]; save(); break;
+    case 'hideintro': state.hide=true; save(); break;
+    case 'hideinfo': state.hideInfo=true; save(); break;
+    case 'take': { if(!peers[d.id]||!isAdmin(me)||d.id===me.id) break;
+      if(confirm('Take over '+(peers[d.id].name||'this guest')+'? Your current profile will be released and loses admin.')){
+        upd(d.id,{owner:myUid,admin:true});
+        upd(me.id,{owner:'',admin:false,title:norm(me.title)==='admin'?'':me.title});
+        state.tab=0;
+      }
+      break; }
+    case 'tri': { const c=trk(d.id); state.trk[d.id]=Object.assign(c,{[d.f]:nextTri(c[d.f])}); save(); break; }
+    case 'gread': state.rd[d.id]=state.rd[d.id]===d.val?'':d.val; save(); break;
+    case 'vote': upd(me.id,{votes:{[d.id]:(me.votes||{})[d.id]===d.val?'':d.val}}); break;
+    case 'new': if(isAdmin(me)){ upd(newId(),blank({name:'New player'})); } break;
+    case 'kick': { const p=peers[d.id]; if(!p||!isAdmin(me)) break;
+      if(p.owner){ if(confirm('Remove access for '+(p.name||'this guest')+'? The profile stays and can be claimed again.')) upd(d.id,{owner:''}); }
+      else if(confirm('Delete the unclaimed profile "'+(p.name||'')+'"?')){ delete peers[d.id]; if(db) db.doc('players/'+d.id).delete().catch(()=>{}); }
+      break; }
+    case 'next': if(isSO(me)) setPhase(phase()+1); return;
+    case 'prev': if(isSO(me)) setPhase(phase()-1); return;
+    case 'edit': editing=true; break;
+    case 'cancel': editing=false; break;
+    case 'save': upd(me.id,{name:$('#f_name').value.trim()||me.name,realName:$('#f_real').value.trim(),title:$('#f_title').value.trim(),system:$('#f_sys').value.trim(),abilities:$('#f_abil').value.trim()}); editing=false; break;
+    case 'photo': $('#photoIn').click(); return;
+  }
+  render();
+});
+document.addEventListener('click',e=>{
+  const tb=e.target.closest('[data-tab]'), mb=e.target.closest('#meBtn');
+  if(tb&&!tb.disabled){ state.tab=parseInt(tb.dataset.tab); editing=false; save(); render(); }
+  else if(mb){ state.tab=state.tab===3?0:3; editing=false; save(); render(); }
+});
 
 (function(){ try{
-  if(!window.firebase) return;
+  if(!window.firebase){ app.innerHTML='<div class="panel"><p>Cannot reach Firebase. Check your internet connection.</p></div>'; return; }
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
   myUid = store.get('uid', null);
-  if(!myUid){ myUid = 'p' + Math.random().toString(36).slice(2) + Date.now().toString(36); store.set('uid', myUid); }
+  if(!myUid){ myUid = 'u'+Math.random().toString(36).slice(2)+Date.now().toString(36); store.set('uid', myUid); }
+  render();
   db.collection('players').onSnapshot(s=>{
-    peers = {}; s.docs.forEach(x=>{ peers[x.id] = x.data() || {}; });
-    const a = document.activeElement;
-    if(a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) dirty = true; else render();
+    peers={}; s.docs.forEach(x=>{ peers[x.id]=x.data()||{}; });
+    loaded=true;
+    const a=document.activeElement;
+    if(editing||(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))) dirty=true; else render();
   }, ()=>{});
-  pushMe(); render();
 }catch(e){} })();
-document.addEventListener('focusout', ()=>{ if(dirty){ dirty = false; setTimeout(render, 50); } });
+document.addEventListener('focusout',()=>{ if(dirty&&!editing){ dirty=false; setTimeout(render,50); } });
 </script>
 </body>
 </html>
