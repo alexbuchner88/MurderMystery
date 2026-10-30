@@ -153,18 +153,19 @@ const FIREBASE_CONFIG = {
   appId: "1:499648887891:web:1c75271271df39f5b81aa6"
 };
 const PHASE_INFO = [
-  {title:"ARRIVAL", banner:"Welcome to Alpha Centauri. Check the guest list to see who is here tonight."},
-  {title:"THE MURDER", banner:"A body has been found. Two rumours are now circulating from each guest: one accusing, one exonerating. Trade them with the room."},
-  {title:"THE WEAPON", banner:"The murder weapon has been identified. Each guest holds a clue: one connecting a person to the weapon, one disproving a connection."},
-  {title:"TIME & PLACE", banner:"The time and place of the murder are confirmed. Check alibis. Some are proven, some rest only on another guest's word."},
-  {title:"THE ACCOMPLICE", banner:"No single guest has motive, ability and opportunity together. Find the PAIR who between them have all three."},
-  {title:"THE VERDICT", banner:"Cast your votes. Choose up to two suspects to accuse, or mark guests as certainly innocent."}
+  {title:"ARRIVAL", banner:"Welcome to Alpha Centauri. Please ensure you have filled out and read your immigration form!"},
+  {title:"MOTIVE", banner:"A death happened. Spread your rumor and find people who may be politically motivated or have other motives for the murder!"},
+  {title:"ALIBI GAP", banner:"State your alibi to the Security Officer and find people with incomplete or suspicious alibis or people who saw the captain today!"},
+  {title:"LINK", banner:"The elevator was sabotaged and traces of a substance were found in the captain's blood. Follow your clue and either find out who has the skills to sabotage the elevator or who had direct or indirect access to the drug. Share your finds!"},
+  {title:"CONNECTION", banner:"Find the hacker and the connected person who met and drugged the captain!"},
+  {title:"VERDICT", banner:"Vote and make your case!"}
 ];
-const OBJ = {2:'motive',3:'ability',4:'opportunity'};
+const OBJ = {2:['motive'],3:['gap'],4:['sabotage','drug']};
+const SHORT = {motive:'Motive',gap:'Alibi Gap',sabotage:'Sabotage',drug:'Drug'};
 const SECRETS = [
-  {min:2, label:"YOUR RUMOURS", f:[["accuse","Accusing"],["exonerate","Exonerating"]]},
-  {min:3, label:"YOUR WEAPON CLUES", f:[["weaponConnect","Connects someone"],["weaponDisprove","Disproves a connection"]]},
-  {min:4, label:"YOUR ALIBI", f:[["alibi","Alibi"]]}
+  {min:2, label:"RUMORS", f:[["rumors","Rumors"]]},
+  {min:3, label:"ALIBI", f:[["alibi","Alibi"]]},
+  {min:4, label:"INSIDER KNOWLEDGE", f:[["insider","Insider Knowledge"]]}
 ];
 const store = {
   get(k,d){ try{const v=localStorage.getItem('mm_'+k); return v?JSON.parse(v):d;}catch(e){return d;} },
@@ -173,7 +174,7 @@ const store = {
 const state = { tab:store.get('tab3',0), hide:store.get('hide3',false), hideInfo:store.get('hideinfo3',false), secOpen:store.get('sec3',true), open:store.get('open2',{}), trk:store.get('trk2',{}), rd:store.get('rd2',{}), pn:store.get('pn2',{}) };
 function save(){ store.set('tab3',state.tab); store.set('hide3',state.hide); store.set('hideinfo3',state.hideInfo); store.set('sec3',state.secOpen); store.set('open2',state.open); store.set('trk2',state.trk); store.set('rd2',state.rd); store.set('pn2',state.pn); }
 
-let db=null, myUid=null, peers={}, loaded=false, dirty=false, editing=false;
+let db=null, myUid=null, peers={}, loaded=false, dirty=false, editing=false, voteWarn=false;
 const $ = s=>document.querySelector(s);
 const esc = t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const nl = t=>esc(t).replace(/\n/g,'<br>');
@@ -186,6 +187,8 @@ const mine = ()=>P().find(p=>p.owner&&p.owner===myUid);
 const phase = ()=>(peers._game&&peers._game.phase)||1;
 const isAdmin = m=>norm(m.title)==='admin';
 const isSO = m=>isAdmin(m)||norm(m.title)==='security officer';
+const isEngineer = m=>norm(m.title)==='chief engineer';
+const MAINT = [['Bridge','Routine Mechanical','Astraea'],['Medbay','Routine Mechanical','Astraea'],['Medbay','Routine Software Update','Vikram Rao'],['Holodeck','Routine Mechanical','Vikram Rao'],['Holodeck','Routine Software Update','Stardust']];
 const newId = ()=>'p'+Math.random().toString(36).slice(2,9)+Date.now().toString(36);
 
 function upd(id,patch){
@@ -196,14 +199,14 @@ function upd(id,patch){
 function blank(extra){ return Object.assign({owner:'',name:'',realName:'',title:'',system:'',abilities:'',photo:'',notes:'',secrets:{},votes:{},created:Date.now()},extra); }
 function setPhase(n){ if(n<1||n>6) return; upd('_game',{phase:n}); render(); window.scrollTo(0,0); }
 function shrink(file){ return new Promise((ok,no)=>{ const r=new FileReader(); r.onerror=no; r.onload=()=>{ const im=new Image(); im.onerror=no; im.onload=()=>{ const n=128,c=document.createElement('canvas'); c.width=c.height=n; const s=Math.min(im.width,im.height); c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,n,n); ok(c.toDataURL('image/jpeg',0.75)); }; im.src=r.result; }; r.readAsDataURL(file); }); }
-const trk = id=>Object.assign({motive:'unknown',ability:'unknown',opportunity:'unknown',shared:''},state.trk[id]);
+const trk = id=>Object.assign({motive:'unknown',gap:'unknown',sabotage:'unknown',drug:'unknown',shared:''},state.trk[id]);
 const nextTri = v=>v==='unknown'?'yes':v==='yes'?'no':'unknown';
 const triSym = v=>v==='yes'?'✓':v==='no'?'✕':'–';
 const triCls = v=>v==='yes'?'ts-yes':v==='no'?'ts-no':'';
 
 function renderTop(me){
   $('#phaseChip').textContent = `PHASE ${phase()}/6 — ${PHASE_INFO[phase()-1].title}`;
-  $('#meSlot').innerHTML = me?`<button class="avatar" id="meBtn" title="My profile" style="width:36px;height:36px;min-width:36px;font-size:${state.tab===3?'1rem':'.8rem'};${state.tab===3?'border-color:var(--amber);':''}">${state.tab===3?'✕':av(me)}</button>`:'';
+  $('#meSlot').innerHTML = me?`<div style="display:flex;gap:8px;">${isEngineer(me)?`<button class="avatar" id="logBtn" title="Maintenance log" style="width:36px;height:36px;min-width:36px;font-size:${state.tab===4?'1rem':'.65rem'};${state.tab===4?'border-color:var(--amber);':''}">${state.tab===4?'✕':'LOG'}</button>`:''}<button class="avatar" id="meBtn" title="My profile" style="width:36px;height:36px;min-width:36px;font-size:${state.tab===3?'1rem':'.8rem'};${state.tab===3?'border-color:var(--amber);':''}">${state.tab===3?'✕':av(me)}</button></div>`:'';
   const tabs = me&&phase()>=6?['Guests','Accusation','Verdict']:[];
   $('#tabs').innerHTML = tabs.map((t,i)=>`<button class="tab ${state.tab===i?'active':''}" data-tab="${i}" >${t}</button>`).join('');
 }
@@ -234,15 +237,15 @@ function guests(me){
         ${p.abilities?`<label class="row-label">Abilities</label><div>${nl(p.abilities)}</div>`:''}
         ${!p.system&&!p.abilities?'<div class="subject-role">No public details yet.</div>':''}`;
       if(self&&g) body+=`<label class="row-label" style="margin-top:14px;">${g.label}</label>${g.f.map(([k,l])=>`<p style="margin:4px 0;"><b>${l}:</b> ${s[k]?nl(s[k]):'<span class="subject-role">not filled in yet</span>'}</p>`).join('')}`;
-      if(!self&&ph>=2){
-        body+=`<label class="row-label" style="margin-top:14px;">Your case file on this guest (private)</label>
-        <div class="flags tight">${[['motive','Motive'],['ability','Ability'],['opportunity','Opportunity']].map(([f,l])=>`<button class="tristate ${triCls(t[f])}" data-a="tri" data-id="${p.id}" data-f="${f}">${l} ${triSym(t[f])}</button>`).join('')}</div>`;
-        if(ph>=5) body+=`<label class="row-label">Shared alibi with</label><select data-i="shared" data-id="${p.id}"><option value="">None</option>${ps.filter(o=>o.id!==p.id).map(o=>`<option value="${o.id}" ${t.shared===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
-        body+=`<label class="row-label">Your read</label><div class="pick-actions"><button class="pick-btn ${v==='suspect'?'on-suspect':''}" data-a="gread" data-id="${p.id}" data-val="suspect">Suspicious</button><button class="pick-btn ${v==='innocent'?'on-innocent':''}" data-a="gread" data-id="${p.id}" data-val="innocent">Innocent</button></div>
+      if(!self){
+        const fl=[['motive','Motive',2],['gap','Alibi Gap',3],['sabotage','Sabotage Skills',4],['drug','Drug Access',4]].filter(x=>ph>=x[2]);
+        body+=`<label class="row-label" style="margin-top:14px;">Your case file on this guest (private)</label>${fl.length?`<div class="flags tight">${fl.map(([f,l])=>`<button class="tristate ${triCls(t[f])}" data-a="tri" data-id="${p.id}" data-f="${f}">${l} ${triSym(t[f])}</button>`).join('')}</div>`:''}`;
+        body+=`<label class="row-label">Shared alibi or other connection</label><select data-i="shared" data-id="${p.id}"><option value="">None</option>${ps.filter(o=>o.id!==p.id).map(o=>`<option value="${o.id}" ${t.shared===o.id?'selected':''}>${esc(o.name)}</option>`).join('')}</select>`;
+        if(ph>=2) body+=`<label class="row-label">Your read</label><div class="pick-actions"><button class="pick-btn ${v==='suspect'?'on-suspect':''}" data-a="gread" data-id="${p.id}" data-val="suspect">Suspicious</button><button class="pick-btn ${v==='innocent'?'on-innocent':''}" data-a="gread" data-id="${p.id}" data-val="innocent">Innocent</button></div>
         <label class="row-label">Your notes</label><textarea data-i="pnote" data-id="${p.id}" placeholder="Notes on ${esc(p.name)}...">${esc(state.pn[p.id]||'')}</textarea>`;
       }
       if(admin&&open){
-        body+=`<div class="setup-note"><div class="eyebrow">ADMIN</div><label class="row-label">Character name</label><input type="text" maxlength="40" data-i="afield" data-k="${p.id}|name" value="${esc(p.name)}"><label class="row-label">Role/Position</label><input type="text" maxlength="60" data-i="afield" data-k="${p.id}|title" value="${esc(p.title)}">${SECRETS.map(g=>g.f.map(([k,l])=>`<label class="row-label">${l}</label><textarea data-i="secret" data-k="${p.id}|${k}">${esc(s[k]||'')}</textarea>`).join('')).join('')}
+        body+=`<div class="setup-note"><div class="eyebrow">ADMIN</div><label class="row-label">Character name</label><input type="text" maxlength="40" data-i="afield" data-k="${p.id}|name" value="${esc(p.name)}"><label class="row-label">Role/Position</label><input type="text" maxlength="60" data-i="afield" data-k="${p.id}|title" value="${esc(p.title)}"><label class="row-label">Home planet / System</label><input type="text" maxlength="60" data-i="afield" data-k="${p.id}|system" value="${esc(p.system)}">${SECRETS.map(g=>g.f.map(([k,l])=>`<label class="row-label">${l}</label><textarea data-i="secret" data-k="${p.id}|${k}">${esc(s[k]||'')}</textarea>`).join('')).join('')}
         <label class="row-label">Personal notes</label><textarea data-i="anote" data-id="${p.id}">${esc(p.notes||'')}</textarea></div>`;
       }
       body+='</div>';
@@ -250,7 +253,7 @@ function guests(me){
     return `<div class="board-card"><div class="board-header" data-a="open" data-id="${p.id}">
       <div class="avatar-wrap"><div class="avatar ${v==='suspect'?'avatar-suspect':v==='innocent'?'avatar-innocent':''}">${av(p)}</div></div>
       <div style="flex:1;min-width:0;"><div class="subject-name">${esc(p.name||'Unnamed')}${self?' <span class="mono" style="color:var(--amber);font-size:.7rem;">(YOU)</span>':''}${admin&&!p.owner?' <span class="mono" style="color:var(--dim);font-size:.7rem;">(unclaimed)</span>':''}</div><div class="subject-role">${sub||'&nbsp;'}</div></div>
-      ${!self&&OBJ[ph]?`<button class="tristate ${triCls(t[OBJ[ph]])}" data-a="tri" data-id="${p.id}" data-f="${OBJ[ph]}" style="margin-right:6px;flex:none;">${OBJ[ph][0].toUpperCase()+OBJ[ph].slice(1)} ${triSym(t[OBJ[ph]])}</button>`:''}${admin&&!self?`<button class="pick-btn" data-a="take" data-id="${p.id}" title="Take over this guest" style="margin-right:6px;">✓</button><button class="pick-btn" data-a="kick" data-id="${p.id}" title="${p.owner?'Remove access':'Delete'}">✕</button>`:''}
+      ${!self&&OBJ[ph]?OBJ[ph].map(f=>`<button class="tristate ${triCls(t[f])}" data-a="tri" data-id="${p.id}" data-f="${f}" style="margin-right:6px;flex:none;">${SHORT[f]} ${triSym(t[f])}</button>`).join(''):''}${admin&&!self?`<button class="pick-btn" data-a="take" data-id="${p.id}" title="Take over this guest" style="margin-right:6px;">✓</button><button class="pick-btn" data-a="kick" data-id="${p.id}" title="${p.owner?'Remove access':'Delete'}">✕</button>`:''}
       <span class="chevron">${self&&ph>=2&&ph<=4&&!admin?'':open?'▲':'▼'}</span></div>${body}</div>`;
   }).join('')}
   ${admin?'<button class="btn secondary" data-a="new">+ New player</button>':''}
@@ -277,7 +280,7 @@ function profile(me){
 function verdict(me){
   const ps=P(), mv=me.votes||{}, sus=ps.filter(p=>mv[p.id]==='suspect').length;
     return `<div class="banner reveal">${PHASE_INFO[5].banner}</div>
-  <div class="panel"><div class="eyebrow mono">${sus}/2 SELECTED AS SUSPECT</div><div class="setup-note">${ps.filter(p=>p.votes&&Object.values(p.votes).some(Boolean)).length} of ${ps.length} guests have voted.</div>${sus>2?'<p style="color:var(--danger);font-size:.85rem;">You can only accuse two. Remove one.</p>':''}</div>
+  <div class="panel"><div class="eyebrow mono">${sus}/2 SELECTED AS SUSPECT</div><div class="setup-note">${ps.filter(p=>p.votes&&Object.values(p.votes).some(Boolean)).length} of ${ps.length} guests have voted.</div>${voteWarn?'<p style="color:var(--danger);font-size:.85rem;">You can accuse two guests at most. Remove one first.</p>':''}</div>
   <div class="pick-grid">${ps.map(p=>`<div class="pick-row"><div><div class="subject-name" style="font-size:.9rem;">${esc(p.name)}</div><div class="subject-role" style="font-size:.72rem;margin:0;">${esc(p.title)}</div></div>
     <div class="pick-actions"><button class="pick-btn ${mv[p.id]==='suspect'?'on-suspect':''}" data-a="vote" data-id="${p.id}" data-val="suspect">Suspect</button><button class="pick-btn ${mv[p.id]==='innocent'?'on-innocent':''}" data-a="vote" data-id="${p.id}" data-val="innocent">Innocent</button></div></div>`).join('')}</div>`;
 }
@@ -291,6 +294,9 @@ function results(){
     <div style="height:4px;background:var(--panel);"><div style="height:100%;width:${r.a/max*100}%;background:var(--danger);"></div></div>
     <div class="subject-role" style="margin:0;font-size:.72rem;">${r.a} accuse · ${r.c} cleared</div></div>`).join('')}</div>`;
 }
+function maint(){
+  return `<div class="panel"><div class="eyebrow">ELEVATOR SYSTEMS</div><h3>Maintenance Log</h3><div class="subject-role" style="margin:0;">Restricted access: Chief Engineer</div></div>`+['Bridge','Medbay','Holodeck'].map(l=>`<div class="panel"><div class="eyebrow">${l.toUpperCase()} ELEVATOR</div>${MAINT.filter(m=>m[0]===l).map(m=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.1);"><span>${esc(m[1])}</span><span class="mono" style="color:var(--amber);">${esc(m[2])}</span></div>`).join('')||'<div class="subject-role">No entries.</div>'}</div>`).join('');
+}
 function render(){
   const app=$('#app');
   if(!loaded){ renderTop(null); app.innerHTML='<div class="panel"><div class="eyebrow">CONNECTING</div><p>Loading station records...</p></div>'; return; }
@@ -299,7 +305,8 @@ function render(){
   renderTop(me);
   if(!me){ app.innerHTML=signup(); return; }
   let t=state.tab; if((t===1||t===2)&&phase()<6) t=0;
-  app.innerHTML = t===3?profile(me):t===2?results():t===1?verdict(me):guests(me);
+  if(t===4&&!isEngineer(me)) t=0;
+  app.innerHTML = t===4?maint():t===3?profile(me):t===2?results():t===1?verdict(me):guests(me);
 }
 
 const tm={};
@@ -339,7 +346,9 @@ app.addEventListener('click',e=>{
       break; }
     case 'tri': { const c=trk(d.id); state.trk[d.id]=Object.assign(c,{[d.f]:nextTri(c[d.f])}); save(); break; }
     case 'gread': state.rd[d.id]=state.rd[d.id]===d.val?'':d.val; save(); break;
-    case 'vote': upd(me.id,{votes:{[d.id]:(me.votes||{})[d.id]===d.val?'':d.val}}); break;
+    case 'vote': { const mv=me.votes||{}, cur=mv[d.id]; voteWarn=false;
+      if(d.val==='suspect'&&cur!=='suspect'&&Object.values(mv).filter(x=>x==='suspect').length>=2){ voteWarn=true; break; }
+      upd(me.id,{votes:{[d.id]:cur===d.val?'':d.val}}); break; }
     case 'new': if(isAdmin(me)){ upd(newId(),blank({name:'New player'})); } break;
     case 'kick': { const p=peers[d.id]; if(!p||!isAdmin(me)) break;
       if(p.owner){ if(confirm('Remove access for '+(p.name||'this guest')+'? The profile stays and can be claimed again.')) upd(d.id,{owner:''}); }
@@ -357,6 +366,7 @@ app.addEventListener('click',e=>{
 document.addEventListener('click',e=>{
   const tb=e.target.closest('[data-tab]'), mb=e.target.closest('#meBtn');
   if(tb&&!tb.disabled){ state.tab=parseInt(tb.dataset.tab); editing=false; save(); render(); }
+  else if(e.target.closest('#logBtn')){ state.tab=state.tab===4?0:4; editing=false; save(); render(); }
   else if(mb){ state.tab=state.tab===3?0:3; editing=false; save(); render(); }
 });
 
